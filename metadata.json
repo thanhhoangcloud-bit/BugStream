@@ -1,0 +1,6 @@
+{
+  "name": "Bug Reporter",
+  "description": "Ứng dụng báo cáo lỗi sử dụng Supabase và Cloudinary",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
