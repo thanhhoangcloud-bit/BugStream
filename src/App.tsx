@@ -39,6 +39,7 @@ export default function App() {
   const [editPassword, setEditPassword] = useState('');
   const [profileUpdateError, setProfileUpdateError] = useState<string | null>(null);
   const [profileUpdateSuccess, setProfileUpdateSuccess] = useState(false);
+  const [sessionTimeLeft, setSessionTimeLeft] = useState('');
   
   // Database status and configuration states
   const [isSupabaseConnected, setIsSupabaseConnected] = useState(false);
@@ -220,6 +221,38 @@ export default function App() {
 
     return () => clearInterval(interval);
   }, [currentUser, isSupabaseConnected, tablesExist]);
+
+  // Session time left calculator
+  useEffect(() => {
+    if (!currentUser || !showProfile) return;
+
+    const updateTimeLeft = () => {
+      const savedSession = localStorage.getItem('bugstream_user_session');
+      if (savedSession) {
+        try {
+          const { timestamp } = JSON.parse(savedSession);
+          const expTime = timestamp + 1 * 60 * 60 * 1000;
+          const diff = expTime - Date.now();
+          if (diff <= 0) {
+            setSessionTimeLeft('Hết hạn');
+            handleLogout();
+          } else {
+            const minutes = Math.floor(diff / 60000);
+            const seconds = Math.floor((diff % 60000) / 1000);
+            setSessionTimeLeft(`${minutes}:${seconds.toString().padStart(2, '0')}`);
+          }
+        } catch (e) {
+          setSessionTimeLeft('N/A');
+        }
+      } else {
+        setSessionTimeLeft('N/A');
+      }
+    };
+
+    updateTimeLeft();
+    const interval = setInterval(updateTimeLeft, 1000);
+    return () => clearInterval(interval);
+  }, [currentUser, showProfile]);
 
   // Fetch Bugs from Supabase
   const fetchBugs = async () => {
