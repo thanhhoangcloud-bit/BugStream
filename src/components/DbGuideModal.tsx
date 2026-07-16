@@ -19,8 +19,12 @@ CREATE TABLE IF NOT EXISTS users (
   pass TEXT NOT NULL,
   google_email TEXT,
   avatar_url TEXT,
+  session_token TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Thêm trường session_token phòng trường hợp bảng users đã tồn tại
+ALTER TABLE users ADD COLUMN IF NOT EXISTS session_token TEXT;
 
 -- 2. Tạo bảng "bugs" lưu trữ thông tin lỗi đã báo
 CREATE TABLE IF NOT EXISTS bugs (

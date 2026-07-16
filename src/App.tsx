@@ -131,29 +131,95 @@ export default function App() {
   // Automatically sync currentUser changes to localStorage
   useEffect(() => {
     if (currentUser) {
+      let currentToken = '';
+      try {
+        const savedSession = localStorage.getItem('bugstream_user_session');
+        if (savedSession) {
+          const parsed = JSON.parse(savedSession);
+          currentToken = parsed.token || '';
+        }
+      } catch (e) {}
+
+      // If no token exists yet (e.g. fresh Google OAuth redirect login), we'll keep what we have or generate a new one
+      if (!currentToken && currentUser.session_token) {
+        currentToken = currentUser.session_token;
+      } else if (!currentToken) {
+        currentToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      }
+
       localStorage.setItem('bugstream_user_session', JSON.stringify({
         user: currentUser,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        token: currentToken
       }));
     }
   }, [currentUser]);
 
   // Check and restore user session from localStorage on mount (valid for 1 hour)
+  // Also check database to verify that this session's current token is still the active one (Single Session)
   useEffect(() => {
-    try {
-      const savedSession = localStorage.getItem('bugstream_user_session');
-      if (savedSession) {
-        const { user, timestamp } = JSON.parse(savedSession);
-        if (Date.now() - timestamp < 3600000) { // 1 hour in ms
-          setCurrentUser(user);
-        } else {
-          localStorage.removeItem('bugstream_user_session');
+    const restoreSession = async () => {
+      try {
+        const savedSession = localStorage.getItem('bugstream_user_session');
+        if (savedSession) {
+          const { user, timestamp, token } = JSON.parse(savedSession);
+          if (Date.now() - timestamp < 3600000) { // 1 hour in ms
+            // Verify session token against Database
+            if (isSupabaseConnected && tablesExist && user?.id) {
+              const { data: dbUser, error } = await supabase
+                .from('users')
+                .select('session_token')
+                .eq('id', user.id)
+                .maybeSingle();
+
+              if (!error && dbUser) {
+                // If DB session_token exists and doesn't match this tab's token, force log out
+                if (dbUser.session_token && dbUser.session_token !== token) {
+                  alert("Tài khoản của bạn đã được đăng nhập ở nơi khác. Bạn sẽ bị đăng xuất.");
+                  handleLogout();
+                  return;
+                }
+              }
+            }
+            setCurrentUser(user);
+          } else {
+            localStorage.removeItem('bugstream_user_session');
+          }
         }
+      } catch (e) {
+        console.warn("Failed to parse saved session", e);
       }
-    } catch (e) {
-      console.warn("Failed to parse saved session", e);
-    }
-  }, []);
+    };
+    restoreSession();
+  }, [isSupabaseConnected, tablesExist]);
+
+  // Periodic active session validator (Single Sign On monitor every 15 seconds)
+  useEffect(() => {
+    if (!currentUser || !isSupabaseConnected || !tablesExist) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const savedSession = localStorage.getItem('bugstream_user_session');
+        if (savedSession) {
+          const { token } = JSON.parse(savedSession);
+          const { data: dbUser, error } = await supabase
+            .from('users')
+            .select('session_token')
+            .eq('id', currentUser.id)
+            .maybeSingle();
+
+          if (!error && dbUser && dbUser.session_token && dbUser.session_token !== token) {
+            alert("Tài khoản của bạn đã được đăng nhập ở một thiết bị hoặc trình duyệt khác.");
+            handleLogout();
+          }
+        }
+      } catch (e) {
+        console.error("Session sync check failed", e);
+      }
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [currentUser, isSupabaseConnected, tablesExist]);
 
   // Fetch Bugs from Supabase
   const fetchBugs = async () => {
@@ -373,12 +439,23 @@ export default function App() {
                 determinedRole = 'approver';
               }
 
+              const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+              const updatePayload: any = { session_token: token };
               if (existingUser.role !== determinedRole) {
-                await supabase.from('users').update({ role: determinedRole }).eq('id', existingUser.id);
+                updatePayload.role = determinedRole;
                 existingUser.role = determinedRole;
               }
 
-              setCurrentUser(existingUser);
+              await supabase.from('users').update(updatePayload).eq('id', existingUser.id);
+              
+              // Set local storage directly first since useEffect might not pick it up fast enough
+              localStorage.setItem('bugstream_user_session', JSON.stringify({
+                user: { ...existingUser, session_token: token },
+                timestamp: Date.now(),
+                token: token
+              }));
+
+              setCurrentUser({ ...existingUser, session_token: token });
             } else {
               // Sign out from oauth session first so we don't save a half-baked oauth login state
               await supabase.auth.signOut();
@@ -401,12 +478,19 @@ export default function App() {
     checkOAuthSession();
   }, [isSupabaseConnected, tablesExist]);
 
-  const handleLoginSuccess = (user: User) => {
+  const handleLoginSuccess = async (user: User) => {
     const userWithRole = { ...user, role: user.role || 'reporter' };
-    setCurrentUser(userWithRole);
+    let token = user.session_token;
+    if (!token) {
+      token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      // Update database session token
+      await supabase.from('users').update({ session_token: token }).eq('id', user.id);
+    }
+    setCurrentUser({ ...userWithRole, session_token: token });
     localStorage.setItem('bugstream_user_session', JSON.stringify({
-      user: userWithRole,
-      timestamp: Date.now()
+      user: { ...userWithRole, session_token: token },
+      timestamp: Date.now(),
+      token: token
     }));
     fetchBugs();
   };

@@ -78,13 +78,23 @@ export default function AuthModal({ onLoginSuccess, isSupabaseActive }: AuthModa
         }, 1000);
       } else {
         // Standard login
-        const { data: user, error } = await supabase
+        const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        const { error: updateTokenErr } = await supabase
+          .from('users')
+          .update({ session_token: token })
+          .eq('id', id.trim().toLowerCase());
+
+        if (updateTokenErr) {
+          console.warn("Failed to set session token on login, continuing", updateTokenErr);
+        }
+
+        const { data: user, error: selectError } = await supabase
           .from('users')
           .select('*')
           .eq('id', id.trim().toLowerCase())
           .single();
 
-        if (error || !user) {
+        if (selectError || !user) {
           setIsSignUp(true);
           setErrorMsg('Tài khoản chưa tồn tại. Hệ thống đã chuyển sang trang tạo mới, vui lòng điền đầy đủ thông tin.');
           setLoading(false);
@@ -99,7 +109,7 @@ export default function AuthModal({ onLoginSuccess, isSupabaseActive }: AuthModa
 
         setSuccessMsg('Đăng nhập thành công!');
         setTimeout(() => {
-          onLoginSuccess(user as User);
+          onLoginSuccess({ ...user, session_token: token } as any);
         }, 1000);
       }
     } catch (err: any) {
