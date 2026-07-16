@@ -704,7 +704,7 @@ export default function App() {
           {/* Logo Title (Georgia italic styling matching theme HTML) */}
           <div className="flex items-center gap-2 shrink-0">
             <h1 className="text-sm font-medium tracking-tight text-white flex items-center gap-1 shadow-xs" style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic' }}>
-              FixBug - TH <span className="text-[9px] font-mono text-zinc-500 not-italic uppercase tracking-widest ml-1">v1.2.0</span>
+              FixBug - TH <span className="text-[9px] font-mono text-zinc-500 not-italic uppercase tracking-widest ml-1">v1.2.1</span>
             </h1>
           </div>
 
@@ -900,6 +900,21 @@ export default function App() {
                               <span>Kết nối tài khoản Google</span>
                             </button>
                           )}
+                        </div>
+
+                        {/* Chi tiết phiên đăng nhập */}
+                        <div className="border-t border-[#222224] pt-2.5 space-y-1.5">
+                          <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest block font-mono">THÔNG TIN PHIÊN ĐĂNG NHẬP</span>
+                          <div className="bg-[#161618] border border-[#222224] rounded-lg p-2 space-y-1.5 text-[11px]">
+                            <div className="flex items-center justify-between text-zinc-300">
+                              <span className="text-zinc-500">Hạn phiên:</span>
+                              <span className="font-mono font-semibold text-zinc-200">{sessionTimeLeft || 'Đang tính...'}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-zinc-300">
+                              <span className="text-zinc-500">Thiết bị đăng nhập:</span>
+                              <span className="font-semibold text-green-400">1 nơi duy nhất</span>
+                            </div>
+                          </div>
                         </div>
                       </>
                     )}

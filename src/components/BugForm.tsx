@@ -68,10 +68,31 @@ export default function BugForm({ userId, onBugSubmitted, appConfig }: BugFormPr
     };
   }, [activeEditIndex]);
 
-  // Trigger file upload dialog on mount
+  // Listen for paste event to handle pasted images
   useEffect(() => {
-    triggerFileSelect();
-  }, []);
+    const handlePaste = (e: ClipboardEvent) => {
+      const clipboardItems = e.clipboardData?.items;
+      if (!clipboardItems) return;
+
+      const pastedFiles: File[] = [];
+      for (let i = 0; i < clipboardItems.length; i++) {
+        const item = clipboardItems[i];
+        if (item.type.indexOf('image') !== -1) {
+          const file = item.getAsFile();
+          if (file) pastedFiles.push(file);
+        }
+      }
+
+      if (pastedFiles.length > 0) {
+        processFiles(pastedFiles);
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => {
+      window.removeEventListener('paste', handlePaste);
+    };
+  }, [files]);
 
   const triggerFileSelect = () => {
     fileInputRef.current?.click();
@@ -130,7 +151,7 @@ export default function BugForm({ userId, onBugSubmitted, appConfig }: BugFormPr
     });
   };
 
-  const processFiles = async (fileList: FileList) => {
+  const processFiles = async (fileList: FileList | File[]) => {
     const newFiles: SelectedFile[] = [];
     const currentCount = files.length;
     const remainingCount = 10 - currentCount;
