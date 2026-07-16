@@ -37,6 +37,40 @@ const getAnnotationsForImage = (desc: string, imageIndex: number): string => {
   return resultLines.join('\n');
 };
 
+const formatDuration = (hours: number): string => {
+  const totalMinutes = Math.round(hours * 60);
+  if (totalMinutes < 60) {
+    return `${totalMinutes} phút`;
+  }
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if (m === 0) {
+    return `${h} giờ`;
+  }
+  return `${h} giờ ${m} phút`;
+};
+
+const parseDuration = (input: string): number | null => {
+  const cleaned = input.trim().toLowerCase();
+  if (!cleaned) return null;
+
+  const minuteMatch = cleaned.match(/^([\d.]+)\s*(p|phút|phut|m|min|minute|minutes)$/);
+  if (minuteMatch) {
+    const val = parseFloat(minuteMatch[1]);
+    return isNaN(val) ? null : val / 60;
+  }
+
+  const hourMatch = cleaned.match(/^([\d.]+)\s*(h|g|giờ|gio|hour|hours)$/);
+  if (hourMatch) {
+    const val = parseFloat(hourMatch[1]);
+    return isNaN(val) ? null : val;
+  }
+
+  const rawVal = parseFloat(cleaned);
+  if (isNaN(rawVal)) return null;
+  return rawVal;
+};
+
 export const BugCard: React.FC<BugCardProps> = ({ bug, onBugUpdate, currentUser }) => {
   const [activeImage, setActiveImage] = useState<string | null>(null);
   const [showDetails, setShowDetails] = useState(false);
@@ -611,7 +645,7 @@ export const BugCard: React.FC<BugCardProps> = ({ bug, onBugUpdate, currentUser 
                           </div>
                           {log.resolved_hours !== undefined && (
                             <div className="text-[11px] text-emerald-400 font-medium">
-                              Số giờ: +{log.resolved_hours} giờ
+                              Số giờ: +{formatDuration(log.resolved_hours)}
                             </div>
                           )}
                           {log.recheck_reason && (
@@ -755,18 +789,19 @@ export const BugCard: React.FC<BugCardProps> = ({ bug, onBugUpdate, currentUser 
             {pendingStatus === 'Resolved' && (
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest font-mono block">
-                  Số giờ thực hiện sửa lỗi (resolved_hours) *
+                  Thời gian thực hiện sửa lỗi *
                 </label>
                 <input
-                  type="number"
-                  step="0.1"
-                  min="0.1"
-                  placeholder="e.g. 2.5"
+                  type="text"
+                  placeholder="Ví dụ: 10p hoặc 2h"
                   value={inputHours}
                   onChange={(e) => setInputHours(e.target.value)}
                   className="w-full px-3 py-2 bg-[#161618] border border-[#222224] rounded-lg text-xs focus:outline-hidden focus:border-blue-500 text-white"
                   required
                 />
+                <span className="text-[9px] text-zinc-500 block">
+                  Nhập số phút (vd: 10p) hoặc số giờ (vd: 2h hoặc 2)
+                </span>
               </div>
             )}
 
@@ -834,9 +869,9 @@ export const BugCard: React.FC<BugCardProps> = ({ bug, onBugUpdate, currentUser 
                 type="button"
                 onClick={async () => {
                   if (pendingStatus === 'Resolved') {
-                    const hours = parseFloat(inputHours);
-                    if (isNaN(hours) || hours <= 0) {
-                      alert("Vui lòng nhập số giờ hợp lệ lớn hơn 0");
+                    const hours = parseDuration(inputHours);
+                    if (hours === null || hours <= 0) {
+                      alert("Vui lòng nhập thời gian hợp lệ (ví dụ: 10p, 2.5h hoặc 2)");
                       return;
                     }
                     setIsUpdating(true);
