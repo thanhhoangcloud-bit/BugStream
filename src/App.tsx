@@ -128,6 +128,33 @@ export default function App() {
     verifyDatabase();
   }, [appConfig.supabaseUrl]);
 
+  // Automatically sync currentUser changes to localStorage
+  useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem('bugstream_user_session', JSON.stringify({
+        user: currentUser,
+        timestamp: Date.now()
+      }));
+    }
+  }, [currentUser]);
+
+  // Check and restore user session from localStorage on mount (valid for 1 hour)
+  useEffect(() => {
+    try {
+      const savedSession = localStorage.getItem('bugstream_user_session');
+      if (savedSession) {
+        const { user, timestamp } = JSON.parse(savedSession);
+        if (Date.now() - timestamp < 3600000) { // 1 hour in ms
+          setCurrentUser(user);
+        } else {
+          localStorage.removeItem('bugstream_user_session');
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to parse saved session", e);
+    }
+  }, []);
+
   // Fetch Bugs from Supabase
   const fetchBugs = async () => {
     try {
@@ -146,6 +173,7 @@ export default function App() {
           )
         `)
         .order('timestamp', { ascending: false });
+
 
       if (error) throw error;
 
@@ -376,11 +404,16 @@ export default function App() {
   const handleLoginSuccess = (user: User) => {
     const userWithRole = { ...user, role: user.role || 'reporter' };
     setCurrentUser(userWithRole);
+    localStorage.setItem('bugstream_user_session', JSON.stringify({
+      user: userWithRole,
+      timestamp: Date.now()
+    }));
     fetchBugs();
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
+    localStorage.removeItem('bugstream_user_session');
     setIsEditingProfile(false);
   };
 
