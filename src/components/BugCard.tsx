@@ -91,10 +91,10 @@ export const BugCard: React.FC<BugCardProps> = ({ bug, onBugUpdate, currentUser 
   // - fixer: Pending, In Progress, Recheck
   // - reporter/approver/owner: Resolved, Recheck
   const isOwner = bug.user_id === currentUserId;
-  const isReporterOrApproverOrOwner = userRole === 'reporter' || userRole === 'approver' || isOwner;
+  const isAllowedReporterOrApprover = (userRole === 'reporter' && isOwner) || userRole === 'approver';
   const canChangeStatus = 
     (isFixer && (bug.status === 'Pending' || bug.status === 'In Progress' || bug.status === 'Recheck')) ||
-    (isReporterOrApproverOrOwner && (bug.status === 'Resolved' || bug.status === 'Recheck'));
+    (isAllowedReporterOrApprover && (bug.status === 'Resolved' || bug.status === 'Recheck'));
 
   useEffect(() => {
     if (showDetails || activeImage) {
@@ -189,7 +189,7 @@ export const BugCard: React.FC<BugCardProps> = ({ bug, onBugUpdate, currentUser 
     if (!canChangeStatus) return;
 
     // Reporter, Approver, or Owner action choice on Resolved or Recheck (Only when user is NOT fixer)
-    if (!isFixer && isReporterOrApproverOrOwner && (bug.status === 'Resolved' || bug.status === 'Recheck')) {
+    if (!isFixer && isAllowedReporterOrApprover && (bug.status === 'Resolved' || bug.status === 'Recheck')) {
       setShowReporterAction(true);
       return;
     }
