@@ -737,7 +737,7 @@ export default function App() {
           {/* Logo Title (Georgia italic styling matching theme HTML) */}
           <div className="flex items-center gap-2 shrink-0">
             <h1 className="text-sm font-medium tracking-tight text-white flex items-center gap-1 shadow-xs" style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic' }}>
-              FixBug - TH <span className="text-[9px] font-mono text-zinc-500 not-italic uppercase tracking-widest ml-1">v1.2.1</span>
+              FixBug - TH <span className="text-[9px] font-mono text-zinc-500 not-italic uppercase tracking-widest ml-1">v1.2.2</span>
             </h1>
           </div>
 
@@ -749,12 +749,14 @@ export default function App() {
               placeholder="Tìm kiếm sự cố..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 py-1 bg-[#161618] border border-[#222224] rounded-lg text-xs focus:outline-hidden focus:border-blue-500 transition-colors placeholder:text-zinc-650 text-white"
+              className="w-full pl-9 pr-3 py-1.5 bg-[#161618] border border-[#222224] rounded-lg text-xs focus:outline-hidden focus:border-blue-500 text-white placeholder-zinc-500"
             />
           </div>
 
-          {/* Database & Cloudinary Status Panel */}
+          {/* Actions & Profile (Right) */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            
+
             {/* Sync Button */}
             <button
               onClick={fetchBugs}
@@ -767,16 +769,24 @@ export default function App() {
 
 
             {/* Add Bug Report Trigger Button */}
-            {currentUser && (
-              <button
-                onClick={() => setShowBugModal(true)}
-                title="Báo cáo sự cố mới"
-                className="flex items-center justify-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white border border-blue-700/50 rounded-lg text-xs font-semibold tracking-tight transition-all cursor-pointer shadow-md shadow-blue-900/20"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Thêm</span>
-              </button>
-            )}
+            {currentUser && (() => {
+              const isReady = isSupabaseConnected && tablesExist && isCloudinaryConnected;
+              return (
+                <button
+                  onClick={() => setShowBugModal(true)}
+                  disabled={!isReady}
+                  title={isReady ? "Báo cáo sự cố mới" : "Vui lòng cấu hình kết nối Database & Cloudinary"}
+                  className={`flex items-center justify-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold tracking-tight transition-all shadow-md ${
+                    isReady 
+                      ? "bg-blue-600 hover:bg-blue-500 active:scale-95 text-white border border-blue-700/50 cursor-pointer shadow-blue-900/20"
+                      : "opacity-40 cursor-not-allowed bg-zinc-800 text-zinc-400 border border-[#222224] shadow-none pointer-events-none"
+                  }`}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Thêm</span>
+                </button>
+              );
+            })()}
 
             {/* Toggle Profile Button with Pop-up Menu */}
             {currentUser && (
