@@ -77,7 +77,60 @@ export default function BugForm({ userId, onBugSubmitted, appConfig }: BugFormPr
     fileInputRef.current?.click();
   };
 
-  const processFiles = (fileList: FileList) => {
+  const resizeImage = (file: File): Promise<File> => {
+    return new Promise((resolve) => {
+      if (!file.type.startsWith('image/')) {
+        resolve(file);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const MAX_SIZE = 2000;
+          let width = img.width;
+          let height = img.height;
+          if (width > MAX_SIZE || height > MAX_SIZE) {
+            if (width > height) {
+              height = Math.round((height * MAX_SIZE) / width);
+              width = MAX_SIZE;
+            } else {
+              width = Math.round((width * MAX_SIZE) / height);
+              height = MAX_SIZE;
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, width, height);
+              canvas.toBlob((blob) => {
+                if (blob) {
+                  const resizedFile = new File([blob], file.name, {
+                    type: file.type,
+                    lastModified: Date.now(),
+                  });
+                  resolve(resizedFile);
+                } else {
+                  resolve(file);
+                }
+              }, file.type);
+            } else {
+              resolve(file);
+            }
+          } else {
+            resolve(file);
+          }
+        };
+        img.onerror = () => resolve(file);
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = () => resolve(file);
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const processFiles = async (fileList: FileList) => {
     const newFiles: SelectedFile[] = [];
     const currentCount = files.length;
     const remainingCount = 10 - currentCount;
@@ -91,9 +144,10 @@ export default function BugForm({ userId, onBugSubmitted, appConfig }: BugFormPr
 
     for (const file of filesToProcess) {
       if (file.type.startsWith('image/')) {
+        const resizedFile = await resizeImage(file);
         newFiles.push({
-          file,
-          preview: URL.createObjectURL(file),
+          file: resizedFile,
+          preview: URL.createObjectURL(resizedFile),
           annotations: []
         });
       }

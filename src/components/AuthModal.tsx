@@ -166,7 +166,7 @@ export default function AuthModal({ onLoginSuccess, isSupabaseActive }: AuthModa
         </div>
       )}
 
-      <form onSubmit={handleAuth} className="space-y-4">
+      <form onSubmit={handleAuth} className="space-y-4" autoComplete="off">
         <div className="space-y-1.5">
           <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest font-mono" htmlFor="id-input">
             ID Người Dùng (Viết liền, không dấu)
@@ -181,6 +181,7 @@ export default function AuthModal({ onLoginSuccess, isSupabaseActive }: AuthModa
               onChange={(e) => setId(e.target.value.toLowerCase().replace(/\s+/g, ''))}
               className="w-full pl-10 pr-4 py-2.5 bg-[#161618] border border-[#222224] rounded-xl text-sm focus:outline-hidden focus:border-blue-500 transition-colors placeholder:text-zinc-600 text-white"
               required
+              autoComplete="off"
             />
           </div>
         </div>
@@ -200,6 +201,7 @@ export default function AuthModal({ onLoginSuccess, isSupabaseActive }: AuthModa
                 onChange={(e) => setName(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 bg-[#161618] border border-[#222224] rounded-xl text-sm focus:outline-hidden focus:border-blue-500 transition-colors placeholder:text-zinc-600 text-white"
                 required={isSignUp}
+                autoComplete="off"
               />
             </div>
           </div>
@@ -219,6 +221,7 @@ export default function AuthModal({ onLoginSuccess, isSupabaseActive }: AuthModa
               onChange={(e) => setPass(e.target.value)}
               className="w-full pl-10 pr-10 py-2.5 bg-[#161618] border border-[#222224] rounded-xl text-sm focus:outline-hidden focus:border-blue-500 transition-colors placeholder:text-zinc-600 text-white"
               required
+              autoComplete="new-password"
             />
             <button
               type="button"

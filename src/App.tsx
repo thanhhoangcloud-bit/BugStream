@@ -26,19 +26,7 @@ import {
 } from 'lucide-react';
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    try {
-      const saved = localStorage.getItem('bugstream_user');
-      if (saved) {
-        const u = JSON.parse(saved);
-        if (u && !u.role) u.role = 'reporter';
-        return u;
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  });
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [bugs, setBugs] = useState<Bug[]>([]);
   const [filter, setFilter] = useState<BugStatus | 'All'>('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -142,51 +130,103 @@ export default function App() {
 
   // Fetch Bugs from Supabase
   const fetchBugs = async () => {
-    if (isSupabaseConnected && tablesExist) {
-      try {
-        // Fetch bugs and join with users to get the name
-        const { data: bugsData, error } = await supabase
-          .from('bugs')
-          .select(`
-            id,
-            description,
-            status,
-            timestamp,
-            image,
-            user_id,
-            users (
-              name
-            )
-          `)
-          .order('timestamp', { ascending: false });
+    try {
+      // Fetch bugs and join with users to get the name
+      const { data: bugsData, error } = await supabase
+        .from('bugs')
+        .select(`
+          id,
+          description,
+          status,
+          timestamp,
+          image,
+          user_id,
+          users (
+            name
+          )
+        `)
+        .order('timestamp', { ascending: false });
 
-        if (error) throw error;
+      if (error) throw error;
 
-        if (bugsData) {
-          const mappedBugs: Bug[] = bugsData.map((item: any) => {
-            const { cleanDescription, metadata } = parseBugMetadata(item.description);
-            return {
-              id: item.id,
-              description: item.description, // keep raw description to avoid data loss
-              status: item.status as BugStatus,
-              timestamp: item.timestamp,
-              image: item.image || [],
-              user_id: item.user_id,
-              user_name: item.users?.name || 'Vô danh',
-              resolved_hours: metadata.resolved_hours,
-              recheck_reason: metadata.recheck_reason,
-              priority: metadata.priority,
-              history: metadata.history
-            };
-          });
-          setBugs(mappedBugs);
-        }
-      } catch (err) {
-        console.error("Failed to fetch bugs from Supabase:", err);
-        setBugs([]);
+      if (bugsData) {
+        const mappedBugs: Bug[] = bugsData.map((item: any) => {
+          const { cleanDescription, metadata } = parseBugMetadata(item.description);
+          return {
+            id: item.id,
+            description: item.description, // keep raw description to avoid data loss
+            status: item.status as BugStatus,
+            timestamp: item.timestamp,
+            image: item.image || [],
+            user_id: item.user_id,
+            user_name: item.users?.name || 'Vô danh',
+            resolved_hours: metadata.resolved_hours,
+            recheck_reason: metadata.recheck_reason,
+            priority: metadata.priority,
+            history: metadata.history
+          };
+        });
+
+        // Check for auto-closing resolved bugs after 2 days
+        const now = new Date();
+        const autoClosedBugs = mappedBugs.map(async (bug) => {
+          if (bug.status === 'Resolved') {
+            // Find the latest transition to Resolved in history
+            const resolvedLog = bug.history
+              ?.filter(log => log.to_status === 'Resolved')
+              .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+            
+            const resolvedTime = resolvedLog ? new Date(resolvedLog.timestamp) : new Date(bug.timestamp);
+            const diffTime = Math.abs(now.getTime() - resolvedTime.getTime());
+            const diffDays = diffTime / (1000 * 60 * 60 * 24);
+
+            if (diffDays >= 2) {
+              // Construct new history log
+              const updatedHistory = [...(bug.history || [])];
+              const newLog = {
+                timestamp: now.toISOString(),
+                from_status: 'Resolved',
+                to_status: 'Closed',
+                user_name: 'Hệ thống',
+                recheck_reason: 'Tự động đóng case sau 2 ngày hoàn tất'
+              };
+              updatedHistory.push(newLog);
+
+              const { cleanDescription, metadata } = parseBugMetadata(bug.description);
+              const mergedMetadata = {
+                ...metadata,
+                history: updatedHistory
+              };
+              const updatedDescription = stringifyBugMetadata(cleanDescription, mergedMetadata);
+
+              try {
+                await supabase
+                  .from('bugs')
+                  .update({
+                    status: 'Closed',
+                    description: updatedDescription
+                  })
+                  .eq('id', bug.id);
+                
+                // Update the local representation
+                bug.status = 'Closed';
+                bug.description = updatedDescription;
+                bug.history = updatedHistory;
+              } catch (e) {
+                console.error("Auto-close failed for bug ID:", bug.id, e);
+              }
+            }
+          }
+        });
+
+        // Wait for any DB auto-closes to resolve
+        await Promise.all(autoClosedBugs);
+
+        setBugs(mappedBugs);
       }
-    } else {
-      setBugs([]);
+    } catch (err) {
+      console.error("Failed to fetch bugs from Supabase:", err);
+      // Suppress setting empty bugs to allow retries during async settings initialization
     }
   };
 
@@ -233,32 +273,58 @@ export default function App() {
           const fullName = session.user.user_metadata.full_name || 'Google User';
           const avatarUrl = session.user.user_metadata.avatar_url;
 
+          if (!googleEmail) return;
+
           // Sign out from Supabase Auth first so we don't carry a restricted RLS token context during update
           await supabase.auth.signOut();
 
-          // Check if we are in linking mode (have a logged in user in localStorage)
-          const savedUserStr = localStorage.getItem('bugstream_user');
-          if (savedUserStr) {
-            const localUser = JSON.parse(savedUserStr);
+          // Check if we are in linking mode (have a logged in user in memory state)
+          if (currentUser) {
+            const localUser = currentUser;
             if (localUser && (!localUser.google_email || localUser.google_email !== googleEmail)) {
+              // Determine role based on email if linking
+              const emailLower = googleEmail.toLowerCase().trim();
+              let determinedRole = localUser.role || 'reporter';
+              if (emailLower === 'thanhhoangcloud@gmail.com') {
+                determinedRole = 'fixer';
+              } else if (emailLower === 'cuongdt@thanhhoang.vn') {
+                determinedRole = 'approver';
+              }
+
               // Update custom users table
               const { error } = await supabase
                 .from('users')
-                .update({ google_email: googleEmail })
+                .update({ 
+                  google_email: googleEmail,
+                  role: determinedRole
+                })
                 .eq('id', localUser.id);
               
               if (!error) {
-                const updated = { ...localUser, google_email: googleEmail };
+                const updated = { ...localUser, google_email: googleEmail, role: determinedRole };
                 setCurrentUser(updated);
-                localStorage.setItem('bugstream_user', JSON.stringify(updated));
-                alert(`Đã liên kết tài khoản Google: ${googleEmail}`);
+                alert(`Đã liên kết tài khoản Google: ${googleEmail} (Vai trò: ${determinedRole})`);
               } else {
                 console.error("Failed to link Google in database:", error);
                 alert("Lỗi lưu liên kết Google vào DB: " + error.message);
               }
             } else if (localUser && localUser.google_email === googleEmail) {
-              // Email already matches, update local state just in case
-              setCurrentUser(localUser);
+              // Check and update role if it does not match
+              const emailLower = googleEmail.toLowerCase().trim();
+              let determinedRole = localUser.role || 'reporter';
+              if (emailLower === 'thanhhoangcloud@gmail.com') {
+                determinedRole = 'fixer';
+              } else if (emailLower === 'cuongdt@thanhhoang.vn') {
+                determinedRole = 'approver';
+              }
+
+              if (localUser.role !== determinedRole) {
+                await supabase.from('users').update({ role: determinedRole }).eq('id', localUser.id);
+                const updated = { ...localUser, role: determinedRole };
+                setCurrentUser(updated);
+              } else {
+                setCurrentUser(localUser);
+              }
             }
           } else {
             // Direct login/signup via Google OAuth
@@ -270,8 +336,21 @@ export default function App() {
               .maybeSingle();
 
             if (existingUser) {
+              // Ensure correct role is set on login
+              const emailLower = googleEmail.toLowerCase().trim();
+              let determinedRole = existingUser.role || 'reporter';
+              if (emailLower === 'thanhhoangcloud@gmail.com') {
+                determinedRole = 'fixer';
+              } else if (emailLower === 'cuongdt@thanhhoang.vn') {
+                determinedRole = 'approver';
+              }
+
+              if (existingUser.role !== determinedRole) {
+                await supabase.from('users').update({ role: determinedRole }).eq('id', existingUser.id);
+                existingUser.role = determinedRole;
+              }
+
               setCurrentUser(existingUser);
-              localStorage.setItem('bugstream_user', JSON.stringify(existingUser));
             } else {
               // Sign out from oauth session first so we don't save a half-baked oauth login state
               await supabase.auth.signOut();
@@ -297,13 +376,11 @@ export default function App() {
   const handleLoginSuccess = (user: User) => {
     const userWithRole = { ...user, role: user.role || 'reporter' };
     setCurrentUser(userWithRole);
-    localStorage.setItem('bugstream_user', JSON.stringify(userWithRole));
     fetchBugs();
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
-    localStorage.removeItem('bugstream_user');
     setIsEditingProfile(false);
   };
 
@@ -341,7 +418,6 @@ export default function App() {
       if (data) {
         const updatedUser = { ...currentUser, ...data };
         setCurrentUser(updatedUser);
-        localStorage.setItem('bugstream_user', JSON.stringify(updatedUser));
         setProfileUpdateSuccess(true);
         setEditPassword('');
         setTimeout(() => {
@@ -510,15 +586,9 @@ export default function App() {
           
           {/* Logo Title (Georgia italic styling matching theme HTML) */}
           <div className="flex items-center gap-2 shrink-0">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white shadow-lg shadow-blue-900/20 text-sm">
-              B
-            </div>
-            <div className="hidden sm:block">
-              <h1 className="text-sm font-medium tracking-tight text-white flex items-center gap-1 shadow-xs" style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic' }}>
-                BugStream <span className="text-[9px] font-mono text-zinc-500 not-italic uppercase tracking-widest ml-1">v1.2.0</span>
-              </h1>
-              <p className="text-[8px] text-zinc-500 font-mono tracking-wider uppercase">SUPABASE LOG ENGINE</p>
-            </div>
+            <h1 className="text-sm font-medium tracking-tight text-white flex items-center gap-1 shadow-xs" style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic' }}>
+              FixBug - TH <span className="text-[9px] font-mono text-zinc-500 not-italic uppercase tracking-widest ml-1">v1.2.0</span>
+            </h1>
           </div>
 
           {/* Search Input (Middle) */}
@@ -544,33 +614,7 @@ export default function App() {
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
 
-            {/* Role Simulator Switcher */}
-            {currentUser && (
-              <div className="relative shrink-0 flex items-center gap-1 bg-[#161618] border border-[#222224] rounded-lg px-2 py-1 select-none">
-                <span className="hidden md:inline text-[10px] text-zinc-500 font-bold uppercase tracking-wider font-mono">Vai trò:</span>
-                <select
-                  value={currentUser.role || 'reporter'}
-                  onChange={async (e) => {
-                    const newRole = e.target.value as 'fixer' | 'reporter' | 'approver';
-                    const updatedUser = { ...currentUser, role: newRole };
-                    setCurrentUser(updatedUser);
-                    localStorage.setItem('bugstream_user', JSON.stringify(updatedUser));
-                    
-                    try {
-                      await supabase.from('users').update({ role: newRole }).eq('id', currentUser.id);
-                    } catch (err) {
-                      console.warn("DB role column update failed (probably doesn't exist)", err);
-                    }
-                  }}
-                  className="bg-transparent border-none text-[11px] font-semibold text-zinc-300 focus:outline-hidden cursor-pointer"
-                  title="Giả lập Vai trò"
-                >
-                  <option value="reporter" className="bg-[#111113] text-zinc-300">Reporter</option>
-                  <option value="approver" className="bg-[#111113] text-zinc-300 font-medium">Approver</option>
-                  <option value="fixer" className="bg-[#111113] text-zinc-300 font-medium">Fixer</option>
-                </select>
-              </div>
-            )}
+
 
             {/* Add Bug Report Trigger Button */}
             {currentUser && (
@@ -678,9 +722,20 @@ export default function App() {
                               referrerPolicy="no-referrer"
                             />
                             <div>
-                              <h3 className="font-semibold text-xs text-white truncate max-w-[130px]">
-                                {currentUser.name}
-                              </h3>
+                              <div className="flex items-center gap-1.5">
+                                <h3 className="font-semibold text-xs text-white truncate max-w-[130px]">
+                                  {currentUser.name}
+                                </h3>
+                                <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-md border font-mono uppercase ${
+                                  currentUser.role === 'approver' 
+                                    ? 'text-purple-400 bg-purple-950/20 border-purple-900/50' 
+                                    : currentUser.role === 'fixer'
+                                      ? 'text-amber-400 bg-amber-950/20 border-amber-900/50'
+                                      : 'text-zinc-400 bg-zinc-900 border-zinc-800'
+                                }`}>
+                                  {currentUser.role || 'reporter'}
+                                </span>
+                              </div>
                               <p className="text-[10px] text-zinc-500 font-mono">@{currentUser.id}</p>
                             </div>
                           </div>
@@ -728,22 +783,6 @@ export default function App() {
                               <span>Kết nối tài khoản Google</span>
                             </button>
                           )}
-                        </div>
-
-                        {/* Local Stats */}
-                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#222224]">
-                          <div className="bg-[#161618] rounded-lg px-2.5 py-1.5 border border-[#222224] flex items-center justify-between text-xs">
-                            <span className="text-[9px] font-bold text-zinc-500 uppercase font-mono">Đã báo</span>
-                            <span className="font-bold text-sm text-white font-mono">
-                              {bugs.filter(b => b.user_id === currentUser.id).length}
-                            </span>
-                          </div>
-                          <div className="bg-[#1c1c1e] rounded-lg px-2.5 py-1.5 border border-[#2c2c2e] flex items-center justify-between text-xs">
-                            <span className="text-[9px] font-bold text-emerald-400 uppercase font-mono">Hoàn tất</span>
-                            <span className="font-bold text-sm text-emerald-300 font-mono">
-                              {bugs.filter(b => b.user_id === currentUser.id && b.status === 'Resolved').length}
-                            </span>
-                          </div>
                         </div>
                       </>
                     )}
@@ -812,7 +851,7 @@ export default function App() {
               <div className="flex items-baseline gap-1 sm:mt-0.5">
                 <span className="text-lg sm:text-2xl font-light text-white leading-none font-mono">{bugs.length}</span>
                 {(() => {
-                  const inactiveCount = bugs.filter(b => b.status === 'Cancelled').length;
+                  const inactiveCount = bugs.filter(b => b.status === 'Cancelled' || b.status === 'Rejected').length;
                   return inactiveCount > 0 ? (
                     <span className="text-xs text-rose-500 font-mono">(-{inactiveCount})</span>
                   ) : null;
@@ -913,7 +952,7 @@ export default function App() {
                   <p className="font-semibold text-zinc-300 text-sm">Chưa phát hiện bản ghi lỗi nào</p>
                   <p className="text-xs text-zinc-500">
                     {bugs.length === 0 
-                      ? 'Đăng ký tài khoản và gửi sự cố lỗi đầu tiên để khởi tạo danh sách.' 
+                      ? 'Hệ thống hiện tại chưa ghi nhận sự cố nào.' 
                       : 'Hãy thử lọc lại trạng thái hoặc thay đổi từ khóa tìm kiếm.'}
                   </p>
                 </div>
@@ -999,12 +1038,21 @@ export default function App() {
                     return;
                   }
 
+                  const email = pendingGoogleProfile.google_email.toLowerCase().trim();
+                  let determinedRole: 'reporter' | 'fixer' | 'approver' = 'reporter';
+                  if (email === 'thanhhoangcloud@gmail.com') {
+                    determinedRole = 'fixer';
+                  } else if (email === 'cuongdt@thanhhoang.vn') {
+                    determinedRole = 'approver';
+                  }
+
                   const newUser = {
                     id: idInput,
                     name: nameInput,
                     pass: passInput,
                     google_email: pendingGoogleProfile.google_email,
-                    avatar_url: pendingGoogleProfile.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${idInput}`
+                    avatar_url: pendingGoogleProfile.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${idInput}`,
+                    role: determinedRole
                   };
 
                   const { error } = await supabase.from('users').insert(newUser);

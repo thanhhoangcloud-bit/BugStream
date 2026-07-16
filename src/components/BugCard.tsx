@@ -131,6 +131,13 @@ export const BugCard: React.FC<BugCardProps> = ({ bug, onBugUpdate, currentUser 
           icon: <X className="w-3.5 h-3.5 text-red-450" />,
           text: 'Đã hủy'
         };
+      case 'Rejected':
+        return {
+          bg: 'bg-red-950/25 border-red-900/30 text-red-400',
+          dot: 'bg-red-500',
+          icon: <X className="w-3.5 h-3.5 text-red-450" />,
+          text: 'Từ chối'
+        };
       case 'Pending':
       default:
         return {
@@ -259,29 +266,42 @@ export const BugCard: React.FC<BugCardProps> = ({ bug, onBugUpdate, currentUser 
         </div>
         
         {/* Status Badge & Selector */}
-        {canChangeStatus ? (
-          <button
-            onClick={handleStatusCycle}
-            disabled={isUpdating}
-            title={isFixer ? "Click để đổi trạng thái" : "Yêu cầu kiểm tra lại"}
-            className={`flex items-center gap-1 border px-2 py-0.5 rounded-full text-[11px] font-semibold cursor-pointer active:scale-95 hover:brightness-110 transition-all ${statusInfo.bg}`}
-          >
-            {isUpdating ? (
-              <div className="w-2.5 h-2.5 border border-current border-t-transparent rounded-full animate-spin"></div>
-            ) : (
-              statusInfo.icon
-            )}
-            <span>{statusInfo.text}</span>
-          </button>
-        ) : (
-          <div
-            title="Chỉ Người xử lý (Fixer) mới có quyền đổi trạng thái này"
-            className={`flex items-center gap-1 border px-2 py-0.5 rounded-full text-[11px] font-semibold opacity-70 ${statusInfo.bg}`}
-          >
-            {statusInfo.icon}
-            <span>{statusInfo.text}</span>
-          </div>
-        )}
+        <div className="flex items-center gap-1.5">
+          {isFixer && bug.status === 'Pending' && (
+            <button
+              onClick={() => setPendingStatus('Rejected')}
+              disabled={isUpdating}
+              title="Từ chối sự cố"
+              className="flex items-center gap-1 border border-red-900/50 bg-red-950/20 hover:bg-red-950/40 text-red-400 px-2 py-0.5 rounded-full text-[11px] font-semibold cursor-pointer active:scale-95 transition-all"
+            >
+              <X className="w-3 h-3 text-red-400" />
+              <span>Từ chối</span>
+            </button>
+          )}
+          {canChangeStatus ? (
+            <button
+              onClick={handleStatusCycle}
+              disabled={isUpdating}
+              title={isFixer ? "Click để đổi trạng thái" : "Yêu cầu kiểm tra lại"}
+              className={`flex items-center gap-1 border px-2 py-0.5 rounded-full text-[11px] font-semibold cursor-pointer active:scale-95 hover:brightness-110 transition-all ${statusInfo.bg}`}
+            >
+              {isUpdating ? (
+                <div className="w-2.5 h-2.5 border border-current border-t-transparent rounded-full animate-spin"></div>
+              ) : (
+                statusInfo.icon
+              )}
+              <span>{statusInfo.text}</span>
+            </button>
+          ) : (
+            <div
+              title="Chỉ Người xử lý (Fixer) mới có quyền đổi trạng thái này"
+              className={`flex items-center gap-1 border px-2 py-0.5 rounded-full text-[11px] font-semibold opacity-70 ${statusInfo.bg}`}
+            >
+              {statusInfo.icon}
+              <span>{statusInfo.text}</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Description Preview (Only general description) */}
@@ -331,10 +351,20 @@ export const BugCard: React.FC<BugCardProps> = ({ bug, onBugUpdate, currentUser 
       })()}
 
       {/* Footer Info */}
-      <div className="border-t border-[#222224] pt-2.5 flex flex-col gap-2">
-        {/* Clickable badges/indicators (instead of direct text blocks) */}
-        {(bug.resolved_hours !== undefined || (bug.recheck_reason && bug.status !== 'Closed')) && (
-          <div className="flex flex-wrap gap-1.5 pt-0.5">
+      <div className="border-t border-[#222224] pt-2.5">
+        <div className="flex items-center justify-between text-[11px] text-zinc-500 gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 text-zinc-300 font-medium flex-wrap">
+            <div className="flex items-center gap-1">
+              <User className="w-3 h-3 text-zinc-500" />
+              <span className="truncate max-w-[120px]">
+                {bug.user_name || bug.user_id}
+              </span>
+              {bug.user_id === currentUserId && (
+                <span className="bg-blue-600 text-white text-[7px] font-bold px-1 py-0.5 rounded-full scale-90">Tôi</span>
+              )}
+            </div>
+
+            {/* Badges */}
             {bug.resolved_hours !== undefined && (
               <button
                 type="button"
@@ -346,11 +376,11 @@ export const BugCard: React.FC<BugCardProps> = ({ bug, onBugUpdate, currentUser 
                 <span>Đã sửa: <strong>{bug.resolved_hours}h</strong></span>
               </button>
             )}
-            {bug.recheck_reason && bug.status !== 'Closed' && (
+            {bug.recheck_reason && bug.status !== 'Closed' && bug.status !== 'Cancelled' && bug.status !== 'Rejected' && (
               <button
                 type="button"
                 onClick={() => setShowDetails(true)}
-                className={bug.status === 'Cancelled'
+                className={bug.status === 'Cancelled' || bug.status === 'Rejected'
                   ? "bg-red-950/20 hover:bg-red-950/40 border border-red-900/30 hover:border-red-800/40 rounded-md px-1.5 py-0.5 text-[10px] text-red-400 flex items-center gap-1 cursor-pointer transition-all duration-200"
                   : bug.status === 'Closed'
                   ? "bg-zinc-900/40 hover:bg-zinc-900/60 border border-zinc-800/50 hover:border-zinc-700/50 rounded-md px-1.5 py-0.5 text-[10px] text-zinc-450 flex items-center gap-1 cursor-pointer transition-all duration-200"
@@ -358,33 +388,23 @@ export const BugCard: React.FC<BugCardProps> = ({ bug, onBugUpdate, currentUser 
                 }
                 title={
                   bug.status === 'Cancelled' ? "Bấm để xem lý do hủy" :
+                  bug.status === 'Rejected' ? "Bấm để xem lý do từ chối" :
                   bug.status === 'Closed' ? "Bấm để xem lý do đóng" :
                   "Bấm để xem lý do kiểm tra lại"
                 }
               >
                 <AlertCircle className={
-                  bug.status === 'Cancelled' ? "w-3 h-3 text-red-400" :
+                  bug.status === 'Cancelled' || bug.status === 'Rejected' ? "w-3 h-3 text-red-400" :
                   bug.status === 'Closed' ? "w-3 h-3 text-zinc-500" :
                   "w-3 h-3 text-rose-400"
                 } />
                 <span>{
                   bug.status === 'Cancelled' ? "Đã Hủy" :
+                  bug.status === 'Rejected' ? "Từ chối" :
                   bug.status === 'Closed' ? "Đã Đóng" :
                   "Cần Recheck"
                 }</span>
               </button>
-            )}
-          </div>
-        )}
-
-        <div className="flex items-center justify-between text-[11px] text-zinc-500">
-          <div className="flex items-center gap-1 text-zinc-300 font-medium">
-            <User className="w-3 h-3 text-zinc-500" />
-            <span className="truncate max-w-[120px]">
-              {bug.user_name || bug.user_id}
-            </span>
-            {bug.user_id === currentUserId && (
-              <span className="bg-blue-600 text-white text-[7px] font-bold px-1 py-0.5 rounded-full scale-90">Tôi</span>
             )}
           </div>
 
@@ -427,25 +447,38 @@ export const BugCard: React.FC<BugCardProps> = ({ bug, onBugUpdate, currentUser 
                 <span className="text-[10px] text-zinc-500 font-mono">{formattedDate}</span>
               </div>
               
-              {canChangeStatus ? (
-                <button
-                  onClick={handleStatusCycle}
-                  disabled={isUpdating}
-                  className={`flex items-center gap-1 border px-2.5 py-0.5 rounded-full text-[11px] font-semibold cursor-pointer hover:brightness-110 transition-all ${statusInfo.bg}`}
-                >
-                  {isUpdating ? (
-                    <div className="w-2.5 h-2.5 border border-current border-t-transparent rounded-full animate-spin"></div>
-                  ) : (
-                    statusInfo.icon
-                  )}
-                  <span>{statusInfo.text}</span>
-                </button>
-              ) : (
-                <div className={`flex items-center gap-1 border px-2.5 py-0.5 rounded-full text-[11px] font-semibold opacity-70 ${statusInfo.bg}`}>
-                  {statusInfo.icon}
-                  <span>{statusInfo.text}</span>
-                </div>
-              )}
+              <div className="flex items-center gap-1.5">
+                {isFixer && bug.status === 'Pending' && (
+                  <button
+                    onClick={() => setPendingStatus('Rejected')}
+                    disabled={isUpdating}
+                    title="Từ chối sự cố"
+                    className="flex items-center gap-1 border border-red-900/50 bg-red-950/20 hover:bg-red-950/40 text-red-400 px-2.5 py-0.5 rounded-full text-[11px] font-semibold cursor-pointer hover:brightness-110 transition-all"
+                  >
+                    <X className="w-3 h-3 text-red-400" />
+                    <span>Từ chối</span>
+                  </button>
+                )}
+                {canChangeStatus ? (
+                  <button
+                    onClick={handleStatusCycle}
+                    disabled={isUpdating}
+                    className={`flex items-center gap-1 border px-2.5 py-0.5 rounded-full text-[11px] font-semibold cursor-pointer hover:brightness-110 transition-all ${statusInfo.bg}`}
+                  >
+                    {isUpdating ? (
+                      <div className="w-2.5 h-2.5 border border-current border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      statusInfo.icon
+                    )}
+                    <span>{statusInfo.text}</span>
+                  </button>
+                ) : (
+                  <div className={`flex items-center gap-1 border px-2.5 py-0.5 rounded-full text-[11px] font-semibold opacity-70 ${statusInfo.bg}`}>
+                    {statusInfo.icon}
+                    <span>{statusInfo.text}</span>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Creator Info */}
@@ -493,18 +526,19 @@ export const BugCard: React.FC<BugCardProps> = ({ bug, onBugUpdate, currentUser 
 
                 {bug.recheck_reason && bug.status !== 'Closed' && (
                   <div className={
-                    bug.status === 'Cancelled'
+                    bug.status === 'Cancelled' || bug.status === 'Rejected'
                       ? "bg-red-950/20 border border-red-900/30 rounded-xl p-3 text-xs text-red-400 flex flex-col gap-1"
                       : bug.status === 'Closed'
                       ? "bg-zinc-900/40 border border-zinc-800/50 rounded-xl p-3 text-xs text-zinc-450 flex flex-col gap-1"
                       : "bg-rose-950/20 border border-rose-900/30 rounded-xl p-3 text-xs text-rose-450 flex flex-col gap-1"
                   }>
                     <span className={
-                      bug.status === 'Cancelled' ? "text-[9px] font-mono font-bold text-red-500/80 uppercase" :
+                      bug.status === 'Cancelled' || bug.status === 'Rejected' ? "text-[9px] font-mono font-bold text-red-500/80 uppercase" :
                       bug.status === 'Closed' ? "text-[9px] font-mono font-bold text-zinc-500/80 uppercase" :
                       "text-[9px] font-mono font-bold text-rose-500/80 uppercase"
                     }>
                       {bug.status === 'Cancelled' ? "LÝ DO HỦY YÊU CẦU" :
+                       bug.status === 'Rejected' ? "LÝ DO TỪ CHỐI YÊU CẦU" :
                        bug.status === 'Closed' ? "LÝ DO XÁC NHẬN HOÀN TẤT" :
                        "LÝ DO YÊU CẦU KIỂM TRA LẠI"}
                     </span>
@@ -712,7 +746,10 @@ export const BugCard: React.FC<BugCardProps> = ({ bug, onBugUpdate, currentUser 
         <div className="fixed inset-0 bg-[#070708]/85 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
           <div className="bg-[#111113] rounded-2xl border border-[#222224] shadow-2xl p-5 max-w-sm w-full space-y-4 text-left">
             <h3 className="font-semibold text-sm text-white">
-              {pendingStatus === 'Resolved' ? 'Hoàn tất sửa lỗi' : 'Yêu cầu kiểm tra lại'}
+              {pendingStatus === 'Resolved' && 'Hoàn tất sửa lỗi'}
+              {pendingStatus === 'Recheck' && 'Yêu cầu kiểm tra lại'}
+              {pendingStatus === 'Cancelled' && 'Hủy yêu cầu'}
+              {pendingStatus === 'Rejected' && 'Từ chối sự cố'}
             </h3>
             
             {pendingStatus === 'Resolved' && (
@@ -756,6 +793,22 @@ export const BugCard: React.FC<BugCardProps> = ({ bug, onBugUpdate, currentUser 
                 </label>
                 <textarea
                   placeholder="Nhập lý do hủy sự cố này..."
+                  value={inputRecheckReason}
+                  onChange={(e) => setInputRecheckReason(e.target.value)}
+                  rows={3}
+                  className="w-full px-3 py-2 bg-[#161618] border border-[#222224] rounded-lg text-xs focus:outline-hidden focus:border-blue-500 text-white resize-none"
+                  required
+                />
+              </div>
+            )}
+
+            {pendingStatus === 'Rejected' && (
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest font-mono block">
+                  Lý do từ chối sự cố (recheck_reason) *
+                </label>
+                <textarea
+                  placeholder="Nhập lý do từ chối sự cố này..."
                   value={inputRecheckReason}
                   onChange={(e) => setInputRecheckReason(e.target.value)}
                   rows={3}
@@ -819,6 +872,21 @@ export const BugCard: React.FC<BugCardProps> = ({ bug, onBugUpdate, currentUser 
                     setIsUpdating(true);
                     try {
                       await onBugUpdate(bug.id, 'Cancelled', { recheck_reason: inputRecheckReason.trim() });
+                      setPendingStatus(null);
+                      setInputRecheckReason('');
+                    } catch (e) {
+                      console.error(e);
+                    } finally {
+                      setIsUpdating(false);
+                    }
+                  } else if (pendingStatus === 'Rejected') {
+                    if (!inputRecheckReason.trim()) {
+                      alert("Vui lòng nhập lý do từ chối sự cố");
+                      return;
+                    }
+                    setIsUpdating(true);
+                    try {
+                      await onBugUpdate(bug.id, 'Rejected', { recheck_reason: inputRecheckReason.trim() });
                       setPendingStatus(null);
                       setInputRecheckReason('');
                     } catch (e) {

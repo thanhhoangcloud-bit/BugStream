@@ -8,7 +8,7 @@ export interface User {
   role?: 'fixer' | 'reporter' | 'approver';
 }
 
-export type BugStatus = 'Pending' | 'In Progress' | 'Resolved' | 'Recheck' | 'Cancelled' | 'Closed';
+export type BugStatus = 'Pending' | 'In Progress' | 'Resolved' | 'Recheck' | 'Cancelled' | 'Closed' | 'Rejected';
 
 export interface HistoryLog {
   timestamp: string;
