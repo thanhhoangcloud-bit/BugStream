@@ -407,7 +407,7 @@ export const BugCard: React.FC<BugCardProps> = ({ bug, onBugUpdate, currentUser 
                 title="Bấm để xem lịch sử & chi tiết số giờ sửa"
               >
                 <Clock className="w-3 h-3 text-emerald-400" />
-                <span>Đã sửa: <strong>{bug.resolved_hours}h</strong></span>
+                <span>Đã sửa: <strong>{formatDuration(bug.resolved_hours)}</strong></span>
               </button>
             )}
             {bug.recheck_reason && bug.status !== 'Closed' && bug.status !== 'Cancelled' && bug.status !== 'Rejected' && (
